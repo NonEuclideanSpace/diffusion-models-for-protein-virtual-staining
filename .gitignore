@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+
+# Internal planning
+INTERNAL.md
+
+# Data, checkpoints, and generated artifacts
+data/
+outputs/
+checkpoints/
+*.ckpt
+*.pt
+*.pth
