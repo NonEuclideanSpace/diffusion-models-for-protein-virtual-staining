@@ -1,25 +1,68 @@
-# Diffusion Models for Protein Virtual Staining
+# pvs — reference implementation
 
-A diffusion-model project for protein virtual staining using the Human Protein Atlas and OpenCell.
+Working implementation for the protein virtual-staining project. Written to be read: every
+module exists because something in `INTERNAL.md` needs it, and the reasoning that is not
+obvious from the code lives in `notes/`.
 
-## Core Implementation
+Nothing here is the learning repository. That is a separate tree and is written only by hand.
 
-Forward diffusion and closed-form noising · DDPM noise-prediction training · DDPM ancestral sampling · DDIM sampling and inversion · Conditional U-Net baseline · Diffusion Transformer with adaLN-Zero · Classifier-Free Guidance · Biological and image-quality evaluation · Interactive model comparison
+```
+uv sync
+uv run pytest          # 177 tests, no GPU, about a minute
+```
 
-## Biological Extensions
+## Layout
 
-Protein-sequence conditioning with ESM-2, controlling the generated protein fluorescence channel and enabling evaluation on previously unseen proteins.
+```
+src/pvs/
+  diffusion/     schedule, forward process, DDPM, DDIM, EDICT, BDIA, guidance,
+                 eps/x0/v parameterization
+  models/        conditional U-Net baseline, DiT with adaLN-Zero, shared blocks,
+                 conditioning with channel dropout
+  train/         resumable loop, EMA
+  data/          synthetic task, HPA gene selection, crop loading and normalization
+  eval/          SubCell encoder, compartment classifier, calibration divergences,
+                 module M2 information matrix, image and distribution metrics
+data/            build_index.py and fetch_crops.py — run these where the disk is
+experiments/     toy_2d.py, synthetic_m1.py, synthetic_m2.py
+notes/           findings; read data-availability.md and m1-feasibility.md first
+```
 
-HPA-to-OpenCell domain adaptation with LoRA, demonstrating transfer from fixed-cell antibody imaging to live-cell endogenous fluorescence imaging.
+## What to read first
 
-## Data
+**`notes/findings.md`** — everything established so far, with the numbers, ordered by how much
+it changes the project. Start here.
 
-**Human Protein Atlas** — primary training set. Fixed-cell immunofluorescence with DNA, microtubule, endoplasmic reticulum and protein-of-interest channels, plus gene, cell-line and subcellular-localization metadata.
+`notes/m1-feasibility.md` — the estimator that module M1 depends on inverts sign at the
+sample sizes HPA actually provides. This is the single most consequential finding so far and
+it changes what the study can claim.
 
-**OpenCell** — live-cell confocal imaging of endogenously tagged proteins, used for LoRA fine-tuning and cross-domain evaluation rather than base training. It lacks the microtubule and ER channels, so the model must explicitly support missing conditioning channels.
+`notes/data-availability.md` — everything the project needs is public except per-cell
+localization labels, which appear never to have been released.
 
-**Protein sequences** — encoded with a frozen ESM-2 model, used only to produce sequence representations and not trained with the diffusion model.
+`notes/inversion.md` — sampling wants zero terminal SNR and inversion wants the opposite.
+Where the Phase 0 gate should actually be set, and why.
 
-## Status
+`notes/data-plan.md` — crop format, verified channel order, normalization, and the download.
 
-In progress.
+`notes/progress.md` — dated log.
+
+## Choices worth knowing about
+
+**Inversion.** Both EDICT and BDIA are implemented. BDIA wins on every axis measured: one
+network evaluation per step instead of two, round trip at 3.8e-17 instead of 3.5e-16, and no
+degradation at 200 steps where EDICT loses four digits to mixing dilation. EDICT is kept as
+the independent check that catches algebra errors in the other.
+
+**A perfect round trip does not mean a usable latent.** Below its safe parameter range BDIA
+still reconstructs at machine precision while returning a latent with standard deviation 12.9.
+Round-trip error alone must never be the acceptance criterion.
+
+**Channel dropout and classifier-free guidance are one mechanism.** OpenCell has no
+microtubule or ER channel and guidance needs an unconditional pass; implementing them
+separately would mean two ways for a condition to be absent.
+
+**The synthetic task exists to validate the measurement, not the model.** Its conditional
+distributions are known by construction, including a vesicular compartment that no landmark
+predicts — the failure mode every published model shows, reproduced deliberately so the
+estimators can be checked against a known answer before meeting real data.

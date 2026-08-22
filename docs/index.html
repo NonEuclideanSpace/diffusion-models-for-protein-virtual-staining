@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diffusing the Cell: AI-Driven Protein Localization</title>
+<meta name="description" content="A conditional diffusion model that predicts protein localization in single human cells, built from scratch — and the measurement apparatus that checks whether it works.">
+<meta property="og:title" content="Diffusing the Cell: AI-Driven Protein Localization">
+<meta property="og:description" content="A conditional diffusion model that predicts protein localization in single human cells, built from scratch.">
+<meta property="og:image" content="assets/readme_banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#0E0D13; --bg-2:#141320; --surface:#191828; --line:#262435; --line-soft:#1E1D2C;
+  --ink:#ECEAF3; --ink-2:#B9B4CB; --muted:#7E7994;
+  --nucleus:#5884FF; --reticulum:#F6CE56; --tubule:#F45C52; --protein:#48E292;
+  --accent:var(--protein);
+  --glass:rgba(255,255,255,.055);
+  --glass-line:rgba(255,255,255,.09);
+  --glow-a:rgba(72,226,146,.16); --glow-b:rgba(88,132,255,.13);
+  --measure:70ch; --radius:14px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:17px; line-height:1.7;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+h1,h2,h3{margin:0; font-weight:400; text-wrap:balance}
+h1{font-family:"Instrument Serif",Georgia,serif; font-size:clamp(2.6rem,6.4vw,5.2rem); line-height:1.02; letter-spacing:-.02em}
+h2{font-family:"Instrument Serif",Georgia,serif; font-size:clamp(1.9rem,3.4vw,2.9rem); line-height:1.12; letter-spacing:-.015em}
+h3{font-size:1.06rem; font-weight:600; line-height:1.4; letter-spacing:-.005em}
+p{margin:0}
+p+p{margin-top:1.05em}
+a{color:inherit; text-decoration:none}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:6px}
+strong{font-weight:600; color:var(--ink)}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px; margin:0 auto; padding:0 32px}
+.narrow{max-width:var(--measure)}
+.eyebrow{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.7rem; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--muted); font-weight:500}
+.lede{font-size:1.12rem; color:var(--ink-2); max-width:60ch}
+.note{font-size:.87rem; color:var(--muted); max-width:72ch}
+.chan-nucleus{color:var(--nucleus)} .chan-reticulum{color:var(--reticulum)}
+.chan-tubule{color:var(--tubule)} .chan-protein{color:var(--protein)}
+
+/* ---------- liquid glass ---------- */
+.glass{
+  position:relative; border-radius:var(--radius);
+  background:var(--glass);
+  -webkit-backdrop-filter:blur(24px) saturate(180%);
+  backdrop-filter:blur(24px) saturate(180%);
+  border:1px solid var(--glass-line);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.28),
+    inset 0 -14px 26px -18px rgba(0,0,0,.85),
+    0 24px 60px -22px rgba(0,0,0,.75);
+  overflow:hidden;
+}
+.glass::before{
+  content:""; position:absolute; inset:0 0 auto 0; height:38%;
+  background:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0));
+  pointer-events:none;
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .glass{background:rgba(20,19,32,.92)}
+}
+
+/* ---------- nav ---------- */
+nav{position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:50;
+  display:flex; align-items:center; gap:4px; padding:7px 8px 7px 18px;
+  font-size:.86rem; max-width:calc(100vw - 32px)}
+nav .brand{font-family:"Instrument Serif",serif; font-size:1.02rem; margin-right:12px; white-space:nowrap}
+nav a{padding:6px 11px; border-radius:8px; color:var(--ink-2); transition:color .18s,background .18s; white-space:nowrap}
+nav a:hover{color:var(--ink); background:rgba(255,255,255,.06)}
+nav .repo{color:var(--bg); background:var(--accent); font-weight:600}
+nav .repo:hover{background:#5FEBA9; color:var(--bg)}
+@media(max-width:860px){nav .links{display:none}}
+
+/* ---------- hero ---------- */
+#hero{position:relative; padding:180px 0 96px; overflow:hidden}
+#hero::before{content:""; position:absolute; inset:-30% -10% auto -10%; height:120%;
+  background:radial-gradient(60% 55% at 22% 30%,var(--glow-a),transparent 70%),
+             radial-gradient(50% 50% at 82% 18%,var(--glow-b),transparent 70%);
+  filter:blur(20px); pointer-events:none}
+.hero-grid{position:relative; display:grid; gap:40px}
+.hero-strip{position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line)}
+.hero-strip img{display:block; width:100%; height:auto}
+.hero-strip::after{content:""; position:absolute; inset:0;
+  background:linear-gradient(180deg,rgba(14,13,19,.15),rgba(14,13,19,.72))}
+
+/* ---------- scrubber ---------- */
+.scrub{display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:26px; align-items:center}
+@media(max-width:820px){.scrub{grid-template-columns:1fr}}
+.scrub-canvas{position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line); background:#000}
+.scrub-canvas canvas{display:block; width:100%; height:auto}
+.scrub-panel{padding:20px 22px}
+.scrub-head{display:flex; align-items:baseline; justify-content:space-between; gap:14px; flex-wrap:wrap}
+.readouts{display:flex; gap:26px; margin:16px 0 14px}
+.readout .k{font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--muted)}
+.readout .v{font-family:"IBM Plex Mono",monospace; font-size:1.5rem; font-variant-numeric:tabular-nums; color:var(--ink)}
+input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:26px; background:transparent; cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px; border-radius:2px;
+  background:linear-gradient(90deg,var(--protein),var(--nucleus))}
+input[type=range]::-moz-range-track{height:3px; border-radius:2px;
+  background:linear-gradient(90deg,var(--protein),var(--nucleus))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; margin-top:-6.5px;
+  border-radius:50%; background:var(--ink); box-shadow:0 0 0 4px rgba(236,234,243,.14)}
+input[type=range]::-moz-range-thumb{width:16px; height:16px; border:0; border-radius:50%;
+  background:var(--ink); box-shadow:0 0 0 4px rgba(236,234,243,.14)}
+.ctrl{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap}
+.ctrl button{font-family:"IBM Plex Mono",monospace; font-size:.74rem; letter-spacing:.1em;
+  text-transform:uppercase; padding:8px 14px; border-radius:8px; cursor:pointer;
+  color:var(--ink-2); background:rgba(255,255,255,.05); border:1px solid var(--glass-line);
+  transition:color .18s,background .18s}
+.ctrl button:hover{color:var(--ink); background:rgba(255,255,255,.1)}
+.ctrl button[aria-pressed=true]{color:var(--bg); background:var(--accent); border-color:transparent; font-weight:600}
+.tips{display:flex; justify-content:space-between; font-family:"IBM Plex Mono",monospace;
+  font-size:.7rem; color:var(--muted); margin-top:2px}
+
+/* ---------- stats ---------- */
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin-top:56px;
+  background:var(--line-soft); border:1px solid var(--line-soft); border-radius:var(--radius); overflow:hidden}
+.stats>div{background:var(--bg); padding:22px 24px}
+.stats .v{font-family:"IBM Plex Mono",monospace; font-size:1.7rem; font-variant-numeric:tabular-nums; line-height:1.2}
+.stats .k{font-size:.8rem; color:var(--muted); margin-top:4px}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- sections ---------- */
+section{padding:112px 0; position:relative}
+.sec-head{display:grid; gap:14px; margin-bottom:38px}
+.figure{margin:34px 0 0}
+.figure img{display:block; width:100%; height:auto; border-radius:var(--radius); border:1px solid var(--line)}
+figcaption{font-size:.87rem; color:var(--muted); margin-top:14px; max-width:72ch}
+.bleed{margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw); width:100vw;
+  background:#07070B; padding:56px 0; border-block:1px solid var(--line-soft)}
+.bleed img{border-radius:0; border:0}
+.chanrow{display:grid; grid-template-columns:repeat(4,1fr); gap:0; margin-top:14px; font-size:.8rem}
+.chanrow div{text-align:left}
+.chanrow .role{font-family:"IBM Plex Mono",monospace; font-size:.64rem; letter-spacing:.14em; color:var(--muted); display:block}
+@media(max-width:700px){.chanrow{grid-template-columns:repeat(2,1fr); gap:10px}}
+
+/* ---------- module list ---------- */
+.modules{display:grid; gap:1px; margin-top:30px; background:var(--line-soft);
+  border:1px solid var(--line-soft); border-radius:var(--radius); overflow:hidden}
+.modules>div{background:var(--bg); padding:15px 20px; display:grid;
+  grid-template-columns:110px minmax(0,1fr); gap:20px; align-items:baseline}
+.modules .n{font-family:"IBM Plex Mono",monospace; color:var(--accent); font-size:.88rem}
+.modules .m{font-family:"IBM Plex Mono",monospace; color:var(--ink-2); font-size:.85rem; line-height:1.75}
+@media(max-width:640px){.modules>div{grid-template-columns:1fr; gap:4px}}
+
+/* ---------- diagram ---------- */
+.diagram{margin-top:34px; padding:34px 28px; border-radius:var(--radius);
+  border:1px solid var(--line); background:linear-gradient(180deg,var(--bg-2),var(--bg))}
+.diagram svg{display:block; width:100%; height:auto}
+
+/* ---------- toy ---------- */
+.toy{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,300px); gap:26px; align-items:start; margin-top:34px}
+@media(max-width:820px){.toy{grid-template-columns:1fr}}
+.toy-stage{position:relative; border-radius:var(--radius); overflow:hidden;
+  border:1px solid var(--line); background:radial-gradient(70% 70% at 50% 45%,#141322,#08080E)}
+.toy-stage canvas{display:block; width:100%; height:auto}
+.toy-panel{padding:20px 22px}
+.legend{display:flex; flex-direction:column; gap:9px; margin-top:16px; font-size:.85rem; color:var(--ink-2)}
+.legend span{display:inline-flex; align-items:center; gap:9px}
+.dot{width:9px; height:9px; border-radius:50%; flex:none}
+.ring{width:9px; height:9px; border-radius:50%; border:1.5px solid var(--muted); flex:none}
+
+/* ---------- result cards ---------- */
+.cards{display:grid; gap:16px; margin-top:34px}
+.card{padding:26px 28px; border-radius:var(--radius); border:1px solid var(--line);
+  background:linear-gradient(180deg,var(--bg-2),var(--bg))}
+.card h3{margin-bottom:10px}
+.card p{font-size:.97rem; color:var(--ink-2)}
+.card .chart{margin-top:22px}
+.card svg{display:block; width:100%; height:auto; overflow:visible}
+.axlab{font-family:"IBM Plex Mono",monospace; font-size:10.5px; fill:var(--muted)}
+.vlab{font-family:"IBM Plex Mono",monospace; font-size:12px; fill:var(--ink); font-variant-numeric:tabular-nums}
+.slab{font-size:12.5px; fill:var(--ink-2)}
+
+/* ---------- atlas ---------- */
+.atlas-wrap{position:relative; margin-top:34px; border-radius:var(--radius); overflow:hidden;
+  border:1px solid var(--line); background:radial-gradient(75% 75% at 50% 45%,#131221,#07070C)}
+#atlas{display:block; width:100%; height:auto; cursor:crosshair}
+.hovercard{position:absolute; pointer-events:none; opacity:0; transform:translate(-50%,-115%);
+  transition:opacity .14s; padding:11px; width:184px; z-index:5}
+.hovercard.on{opacity:1}
+.hovercard canvas{display:block; width:160px; height:160px; border-radius:8px; background:#000}
+.hovercard .g{font-family:"IBM Plex Mono",monospace; font-size:.86rem; margin-top:9px; color:var(--ink)}
+.hovercard .c{font-size:.76rem; color:var(--ink-2)}
+.hovercard .h{font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--muted); margin-top:3px}
+.atlas-legend{display:flex; flex-wrap:wrap; gap:9px 18px; margin-top:18px; font-size:.82rem; color:var(--ink-2)}
+.atlas-hint{position:absolute; left:16px; bottom:14px; font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem; color:var(--muted); letter-spacing:.08em}
+
+/* ---------- findings ---------- */
+.findings{display:grid; gap:14px; margin-top:34px; counter-reset:f}
+.finding{counter-increment:f; padding:24px 28px 24px 74px; position:relative;
+  border-radius:var(--radius); border:1px solid var(--line); background:var(--bg-2)}
+.finding::before{content:counter(f); position:absolute; left:26px; top:25px;
+  font-family:"IBM Plex Mono",monospace; font-size:.74rem; font-weight:600; color:var(--accent);
+  width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
+  background:rgba(72,226,146,.13)}
+.finding p{font-size:.97rem; color:var(--ink-2); margin-top:8px}
+.pull{margin-top:26px; padding:26px 30px; border-radius:var(--radius);
+  border:1px solid rgba(72,226,146,.34); background:rgba(72,226,146,.06);
+  font-family:"Instrument Serif",Georgia,serif; font-size:1.5rem; line-height:1.35; color:var(--ink)}
+.pull small{display:block; font-family:"IBM Plex Sans",sans-serif; font-size:.88rem;
+  color:var(--ink-2); margin-top:12px; line-height:1.65}
+
+/* ---------- next ---------- */
+.next{margin-top:34px; padding:34px 32px; border-radius:var(--radius);
+  border:1px dashed var(--line); background:repeating-linear-gradient(135deg,
+  rgba(255,255,255,.014) 0 12px,transparent 12px 24px)}
+.next ol{margin:20px 0 0; padding-left:0; list-style:none; display:grid; gap:11px}
+.next li{padding-left:26px; position:relative; font-size:.95rem; color:var(--ink-2)}
+.next li::before{content:""; position:absolute; left:0; top:.62em; width:9px; height:1px; background:var(--accent)}
+
+/* ---------- footer ---------- */
+footer{padding:80px 0 64px; border-top:1px solid var(--line-soft)}
+.foot{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:30px}
+.foot .k{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--muted)}
+.foot .v{margin-top:7px; font-size:.9rem; color:var(--ink-2); word-break:break-word}
+.foot a.v:hover{color:var(--accent)}
+.closing{margin-top:46px; padding-top:24px; border-top:1px solid var(--line-soft);
+  font-size:.85rem; color:var(--muted)}
+
+.reveal{opacity:0; transform:translateY(16px); transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
+.reveal.in{opacity:1; transform:none}
+@media(prefers-reduced-motion:reduce){
+  .reveal{opacity:1; transform:none; transition:none}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+
+<nav class="glass">
+  <span class="brand">Diffusing the Cell</span>
+  <span class="links" style="display:flex">
+    <a href="#task">Task</a><a href="#model">Model</a><a href="#sampling">Sampling</a>
+    <a href="#atlas">Atlas</a><a href="#measurement">Measurement</a>
+  </span>
+  <a class="repo" href="https://github.com/NonEuclideanSpace/diffusion-models-for-protein-virtual-staining">Repository</a>
+</nav>
+
+<!-- ===================== HERO ===================== -->
+<section id="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Conditional diffusion · Single-cell microscopy</p>
+      <h1 style="margin-top:20px">Diffusing the Cell:<br>AI-Driven Protein Localization</h1>
+      <p class="lede" style="margin-top:26px">
+        A conditional diffusion model that predicts one fluorescence channel from the other three,
+        implemented from scratch — and an apparatus for measuring whether it reproduces what real
+        cells actually do.
+      </p>
+    </div>
+
+    <div class="hero-strip"><img src="assets/hero_forward_diffusion.jpg" alt="Seven frames of forward diffusion applied to a real cell, from the clean image to pure noise."></div>
+
+    <div class="scrub">
+      <div class="scrub-canvas"><canvas id="scrub" width="512" height="512"></canvas></div>
+      <div class="glass scrub-panel">
+        <div class="scrub-head">
+          <span class="eyebrow">Forward diffusion</span>
+          <span class="note" style="font-size:.8rem">Drag to add noise</span>
+        </div>
+        <div class="readouts">
+          <div class="readout"><div class="k">t</div><div class="v" id="rd-t">0.00</div></div>
+          <div class="readout"><div class="k">ᾱt</div><div class="v" id="rd-a">1.000</div></div>
+        </div>
+        <input id="slider" type="range" min="0" max="1000" value="0" aria-label="Diffusion time">
+        <div class="tips"><span id="tip-l">The real cell</span><span id="tip-r">Pure noise</span></div>
+        <div class="ctrl">
+          <button id="play" aria-pressed="false">Play</button>
+          <button id="reset">Reset</button>
+        </div>
+        <p class="note" style="margin-top:16px; font-size:.8rem">
+          A real U-2 OS cell under a cosine schedule. ACAD9, mitochondria.
+        </p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div><div class="v">1,138,378</div><div class="k">Single cells indexed</div></div>
+      <div><div class="v">12,000+</div><div class="k">Proteins in the atlas</div></div>
+      <div><div class="v">25</div><div class="k">Modules, from scratch</div></div>
+      <div><div class="v">186</div><div class="k">Tests passing</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TASK ===================== -->
+<section id="task">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">01 — The task</p>
+      <h2>Predict the channel nobody stained</h2>
+    </div>
+    <div class="narrow reveal">
+      <p>A confocal image of a human cell carries four fluorescence channels. Three are landmarks,
+      present in every image: the <span class="chan-nucleus">nucleus</span>, the
+      <span class="chan-reticulum">endoplasmic reticulum</span>, the
+      <span class="chan-tubule">microtubule cytoskeleton</span>. The fourth is the one that costs
+      money and time — an antibody raised against one specific
+      <span class="chan-protein">protein</span>, showing where in the cell that protein sits.</p>
+      <p>Virtual staining asks a model to produce the fourth channel from the first three. Get it
+      right and you can look at a protein you never stained.</p>
+    </div>
+
+    <figure class="figure reveal">
+      <img src="assets/task_four_channels.jpg" alt="The four fluorescence channels of one cell, shown separately.">
+      <div class="chanrow">
+        <div class="chan-nucleus">Nucleus<span class="role">Input</span></div>
+        <div class="chan-reticulum">Endoplasmic reticulum<span class="role">Input</span></div>
+        <div class="chan-tubule">Microtubules<span class="role">Input</span></div>
+        <div class="chan-protein">Protein<span class="role">Target</span></div>
+      </div>
+      <figcaption>The four channels of one cell. The first three are given to the model; the fourth
+      is what it has to produce.</figcaption>
+    </figure>
+  </div>
+
+  <div class="bleed reveal">
+    <div class="wrap">
+      <h3 style="font-family:'Instrument Serif',serif; font-size:1.6rem; font-weight:400">The target moves</h3>
+      <p class="narrow" style="margin-top:12px; color:var(--ink-2)">The answer is different for
+      every protein. Some sit in mitochondria, some in vesicles, some in nuclear speckles a micron
+      across. A model that predicts one compartment well and the rest badly has not learned the task.</p>
+      <figure class="figure">
+        <img src="assets/compartment_grid.jpg" alt="Six proteins in six different subcellular compartments.">
+        <figcaption>Six proteins in six compartments — mitochondria, vesicles, Golgi apparatus,
+        nuclear speckles, cytosol, endoplasmic reticulum. Same cell line, same microscope, same day.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== MODEL ===================== -->
+<section id="model">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">02 — The model</p>
+      <h2>Built from the schedule up</h2>
+    </div>
+    <div class="narrow reveal">
+      <p>Nothing here is imported from a diffusion library. The noise schedules, the forward
+      process, DDPM and DDIM sampling, EDICT and BDIA inversion, classifier-free guidance, the
+      transformer and the UNet, the training loop and its exponential moving average — all of it is
+      implemented directly, with tests that check the mathematics rather than the shapes.</p>
+    </div>
+
+    <div class="diagram reveal">
+      <svg viewBox="0 0 900 190" role="img" aria-label="Landmark channels condition a diffusion transformer that denoises the protein channel.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L10 5 L0 10 z" fill="#48E292"></path>
+          </marker>
+        </defs>
+        <rect x="4" y="42" width="150" height="60" rx="10" fill="rgba(88,132,255,.10)" stroke="#5884FF" stroke-opacity=".55"></rect>
+        <text class="slab" x="79" y="68" text-anchor="middle" fill="#ECEAF3">Landmark</text>
+        <text class="slab" x="79" y="86" text-anchor="middle" fill="#ECEAF3">channels</text>
+        <rect x="4" y="118" width="150" height="52" rx="10" fill="rgba(72,226,146,.08)" stroke="#48E292" stroke-opacity=".4"></rect>
+        <text class="slab" x="79" y="149" text-anchor="middle" fill="#B9B4CB">Noised target</text>
+
+        <line x1="158" y1="72" x2="228" y2="88" stroke="#48E292" stroke-opacity=".55" stroke-width="1.6" marker-end="url(#ar)"></line>
+        <line x1="158" y1="144" x2="228" y2="112" stroke="#48E292" stroke-opacity=".55" stroke-width="1.6" marker-end="url(#ar)"></line>
+
+        <rect x="234" y="70" width="132" height="60" rx="10" fill="rgba(255,255,255,.05)" stroke="#262435"></rect>
+        <text class="slab" x="300" y="105" text-anchor="middle" fill="#ECEAF3">Conditioning</text>
+        <line x1="370" y1="100" x2="436" y2="100" stroke="#48E292" stroke-opacity=".55" stroke-width="1.6" marker-end="url(#ar)"></line>
+
+        <rect x="442" y="52" width="150" height="96" rx="12" fill="rgba(72,226,146,.10)" stroke="#48E292" stroke-opacity=".62"></rect>
+        <text x="517" y="94" text-anchor="middle" fill="#ECEAF3" style="font-family:'IBM Plex Mono',monospace; font-size:17px">DiT</text>
+        <text class="axlab" x="517" y="116" text-anchor="middle">or UNet</text>
+        <line x1="596" y1="100" x2="660" y2="100" stroke="#48E292" stroke-opacity=".55" stroke-width="1.6" marker-end="url(#ar)"></line>
+
+        <rect x="666" y="70" width="146" height="60" rx="10" fill="rgba(255,255,255,.05)" stroke="#262435"></rect>
+        <text class="slab" x="739" y="105" text-anchor="middle" fill="#ECEAF3">Predicted noise</text>
+        <line x1="816" y1="100" x2="878" y2="100" stroke="#48E292" stroke-opacity=".55" stroke-width="1.6" marker-end="url(#ar)"></line>
+        <text class="slab" x="884" y="96" fill="#48E292" text-anchor="end" transform="translate(12,0)"></text>
+        <rect x="822" y="140" width="74" height="0" fill="none"></rect>
+        <text class="slab" x="896" y="105" text-anchor="end" fill="#48E292">Protein</text>
+      </svg>
+      <p class="note" style="margin-top:18px">The landmark channels condition a diffusion transformer
+      that denoises the protein channel. Both a DiT and a UNet backbone are implemented; the
+      conditioning path is shared.</p>
+    </div>
+
+    <h3 class="reveal" style="margin-top:52px">What is in the repository</h3>
+    <div class="modules reveal">
+      <div><span class="n">diffusion</span><span class="m">schedule · forward · ddpm · ddim · edict · bdia · guidance · parameterization</span></div>
+      <div><span class="n">models</span><span class="m">dit · unet · blocks · conditioning · embeddings</span></div>
+      <div><span class="n">train</span><span class="m">loop · ema</span></div>
+      <div><span class="n">data</span><span class="m">synthetic · hpa · crops · cache</span></div>
+      <div><span class="n">eval</span><span class="m">subcell · localization · calibration · compartment · information · metrics · pointprocess · context</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TOY ===================== -->
+<section id="toy">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">03 — Watch it run</p>
+      <h2>The same code, in two dimensions</h2>
+    </div>
+    <p class="narrow reveal">Everything above is easier to believe in two dimensions. Below is the
+    repository's own noise predictor — a small multilayer perceptron — trained on a ring of eight
+    Gaussians, then run backwards from pure noise. Nothing is precomputed by hand: this is the
+    trajectory the trained model actually produces.</p>
+
+    <div class="toy reveal">
+      <div class="toy-stage"><canvas id="toy" width="880" height="560"></canvas></div>
+      <div class="glass toy-panel">
+        <span class="eyebrow">Reverse trajectory</span>
+        <div class="readouts" style="gap:20px">
+          <div class="readout"><div class="k">Step</div><div class="v" id="toy-step">—</div></div>
+          <div class="readout"><div class="k">ᾱt</div><div class="v" id="toy-a">—</div></div>
+        </div>
+        <div class="ctrl">
+          <button id="toy-play" aria-pressed="false">Play</button>
+          <button id="toy-reset">Reset</button>
+        </div>
+        <div class="legend">
+          <span><i class="dot" style="background:#48E292"></i>Samples</span>
+          <span><i class="ring"></i>Target modes</span>
+        </div>
+        <p class="note" id="toy-caption" style="margin-top:16px; font-size:.8rem">Press play</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SAMPLING ===================== -->
+<section id="sampling">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">04 — Sampling and inversion</p>
+      <h2>Getting back to where you started</h2>
+    </div>
+    <p class="narrow reveal">To edit an image with a diffusion model you have to run it backwards
+    first: take a real image and recover the noise that would have produced it. The round trip has
+    to be exact, or the edit inherits the error.</p>
+
+    <div class="cards">
+      <div class="card reveal">
+        <h3>BDIA beats EDICT on both axes</h3>
+        <p>Two exact-inversion schemes were implemented and compared on the same trajectories. BDIA
+        reaches a round-trip error of 3.8 × 10⁻¹⁷ against EDICT's 3.5 × 10⁻¹⁶, and does it in one
+        network evaluation per step instead of two. At 200 steps neither degrades; the gap holds.
+        Under paired initial noise BDIA reaches 7 × 10⁻¹⁸.</p>
+        <div class="chart">
+          <svg viewBox="0 0 820 148" role="img" aria-label="Round-trip error and network evaluations per step for BDIA and EDICT.">
+            <text class="axlab" x="0" y="14" letter-spacing="1.4">ROUND-TRIP ERROR</text>
+            <line x1="150" y1="46" x2="640" y2="46" stroke="#262435"></line>
+            <line x1="150" y1="86" x2="640" y2="86" stroke="#262435"></line>
+            <text class="slab" x="140" y="50" text-anchor="end" fill="#48E292">BDIA</text>
+            <text class="slab" x="140" y="90" text-anchor="end" fill="#7E7994">EDICT</text>
+            <circle cx="196" cy="46" r="6" fill="#48E292"></circle>
+            <circle cx="415" cy="86" r="6" fill="#7E7994"></circle>
+            <text class="vlab" x="212" y="50" fill="#48E292">3.8 × 10⁻¹⁷</text>
+            <text class="vlab" x="431" y="90" fill="#B9B4CB">3.5 × 10⁻¹⁶</text>
+            <text class="axlab" x="150" y="120">10⁻¹⁷</text>
+            <text class="axlab" x="640" y="120" text-anchor="end">10⁻¹⁵</text>
+            <text class="axlab" x="690" y="14" letter-spacing="1.4">NFE / STEP</text>
+            <text class="vlab" x="700" y="52" fill="#48E292" style="font-size:22px">1</text>
+            <text class="vlab" x="700" y="92" fill="#B9B4CB" style="font-size:22px">2</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="card reveal">
+        <h3>A perfect round trip is not a usable latent</h3>
+        <p>This one was a surprise. At γ = 0.8 the round trip closes to 1.2 × 10⁻¹⁵ — essentially
+        exact — while the recovered latent has a standard deviation of 12.9, nowhere near the unit
+        Gaussian the sampler expects. Invertibility and a well-behaved latent space are separate
+        properties, and measuring the first tells you nothing about the second.</p>
+        <div class="chart">
+          <svg viewBox="0 0 820 118" role="img" aria-label="Round-trip error is essentially exact while the latent standard deviation is far from one.">
+            <text class="axlab" x="0" y="16" letter-spacing="1.4">ROUND-TRIP ERROR</text>
+            <text class="vlab" x="0" y="52" style="font-size:26px" fill="#48E292">1.2 × 10⁻¹⁵</text>
+            <text class="axlab" x="0" y="76">essentially exact</text>
+            <line x1="330" y1="8" x2="330" y2="104" stroke="#262435"></line>
+            <text class="axlab" x="370" y="16" letter-spacing="1.4">LATENT STANDARD DEVIATION</text>
+            <text class="vlab" x="370" y="52" style="font-size:26px" fill="#F45C52">12.9</text>
+            <text class="axlab" x="370" y="76">expected 1.0</text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="card reveal">
+        <h3>Sampling and inversion want opposite schedules</h3>
+        <p>Sampling wants the terminal signal-to-noise ratio driven to zero, so the last step starts
+        from something that really is noise. Inversion wants it kept away from zero, or the first
+        backward step divides by almost nothing. The two requirements pull in opposite directions on
+        the same curve. The implementation floors it at 10⁻².</p>
+        <div class="chart"><svg id="schedule" viewBox="0 0 820 220" role="img" aria-label="The cosine alpha-bar curve, with the terminal end annotated for sampling and inversion."></svg></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== ATLAS ===================== -->
+<section id="atlas">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">05 — The atlas</p>
+      <h2>Twenty-three thousand cells, one map</h2>
+    </div>
+    <p class="narrow reveal">Every cell in the screen was passed through a protein-localization
+    encoder and reduced to a 1,536-dimensional vector. Projected to two dimensions, cells with the
+    same subcellular pattern land together — without anyone telling the projection what the
+    compartments are.</p>
+
+    <div class="atlas-wrap reveal">
+      <canvas id="atlas" width="1120" height="660"></canvas>
+      <div class="glass hovercard" id="hovercard">
+        <canvas id="hovershot" width="96" height="96"></canvas>
+        <div class="g" id="hover-gene">—</div>
+        <div class="c" id="hover-comp">—</div>
+        <div class="h" id="hover-het">—</div>
+      </div>
+      <div class="atlas-hint" id="atlas-hint">Hover a cell</div>
+    </div>
+    <div class="atlas-legend" id="atlas-legend"></div>
+    <p class="note" id="atlas-caption" style="margin-top:14px"></p>
+  </div>
+</section>
+
+<!-- ===================== MEASUREMENT ===================== -->
+<section id="measurement">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">06 — Measurement</p>
+      <h2>Checking the instrument before trusting it</h2>
+    </div>
+    <p class="narrow reveal">A generative model of single cells is only interesting if it reproduces
+    how cells differ from one another. So the first question is not whether the model is good — it
+    is whether the variation we are trying to reproduce is real. Three measurements, in order.</p>
+
+    <div class="findings">
+      <div class="finding reveal">
+        <h3>Most of the variation is not between cells</h3>
+        <p>Per-gene localization heterogeneity decomposes exactly — by the chain rule for mutual
+        information, not by approximation — into a within-imaging-field part and a between-field
+        part. <strong>83.8% of it sits between fields</strong>, and 75.5% survives a permutation
+        null. Cells that share a field share illumination, focus, staining and segmentation; the
+        honest target for a model is the part that is left.</p>
+      </div>
+      <div class="finding reveal">
+        <h3>A reliability of 1.000 was an artefact</h3>
+        <p>The statistic had been validated by splitting a gene's cells at random and correlating
+        the halves, which gave 1.000. But a gene's cells sit in four to six imaging fields, so a
+        random split puts the same fields on both sides. Splitting by <strong>field</strong> instead
+        gives 0.861, against 0.979 for a cell split at matched sample size. The ranking survives;
+        the number in the write-up did not.</p>
+      </div>
+      <div class="finding reveal">
+        <h3>The annotation tracks the camera, not the cells</h3>
+        <p>The Human Protein Atlas flags genes whose cells vary spatially. Testing our measurement
+        against that flag looked promising until one control: <strong>how many imaging fields a gene
+        happened to be photographed in predicts the flag at AUC 0.622</strong> — better than any
+        measure of how much its cells actually differ. Once that is regressed out, only the
+        within-field component survives, at 0.595 with a confidence interval that reaches 0.500.</p>
+      </div>
+    </div>
+
+    <div class="pull reveal">
+      Sampling metadata beat the measurement.
+      <small>Every cross-gene statistic in this project now reports its metadata regressed out, and
+      every decomposition carries a permutation null.</small>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== NEXT ===================== -->
+<section id="next">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <p class="eyebrow">07 — In progress</p>
+      <h2>What is not here yet</h2>
+    </div>
+    <div class="next reveal">
+      <p class="narrow" style="color:var(--ink-2)">There is no model trained on real cells on this
+      page, because there is not one yet. Everything above is the apparatus: the implementation, the
+      sampler, the inversion, the measurement and the data. Training at full resolution needs
+      hardware this project has not been pointed at.</p>
+      <p class="narrow" style="color:var(--ink-2)">When it exists, this section becomes the results.
+      Until then it stays empty on purpose — a generated protein channel would be easy to put here
+      and impossible to defend.</p>
+      <p class="eyebrow" style="margin-top:30px">Next</p>
+      <ol>
+        <li>Train at full resolution on the indexed 1.13 million cells</li>
+        <li>Measure whether generated cells reproduce the within-field variation, not just the average</li>
+        <li>Compare against CELL-Diff and ProtiCelli on the same conditioning</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div><div class="k">Source</div>
+        <a class="v" href="https://github.com/NonEuclideanSpace/diffusion-models-for-protein-virtual-staining">github.com/NonEuclideanSpace/diffusion-models-for-protein-virtual-staining</a></div>
+      <div><div class="k">Data</div><div class="v">Human Protein Atlas, via the CZI SubCell public release</div></div>
+      <div><div class="k">Built with</div><div class="v">PyTorch · no diffusion libraries</div></div>
+      <div><div class="k">Channels</div><div class="v">
+        <span class="chan-nucleus">Nucleus</span> · <span class="chan-reticulum">Endoplasmic reticulum</span> ·
+        <span class="chan-tubule">Microtubules</span> · <span class="chan-protein">Protein</span></div></div>
+    </div>
+    <p class="closing">All images on this page are real Human Protein Atlas cells. No image is generated.</p>
+  </div>
+</footer>
+
+<script>
+const COS=(t,s=0.008)=>{const f=u=>Math.cos((u+s)/(1+s)*Math.PI/2)**2; return f(t)/f(0);};
+
+/* ---------- scroll reveal ---------- */
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{rootMargin:'-8% 0px -8% 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+}else{document.querySelectorAll('.reveal').forEach(el=>el.classList.add('in'));}
+
+/* ---------- 1. forward diffusion scrubber ---------- */
+(function(){
+  const cv=document.getElementById('scrub'), ctx=cv.getContext('2d',{willReadFrequently:true});
+  const slider=document.getElementById('slider'), rt=document.getElementById('rd-t'), ra=document.getElementById('rd-a');
+  const play=document.getElementById('play'), reset=document.getElementById('reset');
+  let clean=null, noise=null, timer=null, phase=0;
+
+  const gauss=n=>{const a=new Float32Array(n); for(let i=0;i<n;i+=2){
+    const u=Math.max(Math.random(),1e-9), v=Math.random(), r=Math.sqrt(-2*Math.log(u));
+    a[i]=r*Math.cos(2*Math.PI*v); if(i+1<n) a[i+1]=r*Math.sin(2*Math.PI*v);} return a;};
+
+  function draw(t){
+    if(!clean) return;
+    const bar=COS(t), sa=Math.sqrt(bar), sb=Math.sqrt(1-bar);
+    const out=ctx.createImageData(cv.width,cv.height), d=out.data, c=clean.data;
+    for(let i=0,j=0;i<d.length;i+=4,j+=3){
+      d[i]  =Math.max(0,Math.min(255,(sa*(c[i]  /127.5-1)+sb*noise[j]  +1)*127.5));
+      d[i+1]=Math.max(0,Math.min(255,(sa*(c[i+1]/127.5-1)+sb*noise[j+1]+1)*127.5));
+      d[i+2]=Math.max(0,Math.min(255,(sa*(c[i+2]/127.5-1)+sb*noise[j+2]+1)*127.5));
+      d[i+3]=255;
+    }
+    ctx.putImageData(out,0,0);
+    rt.textContent=t.toFixed(2); ra.textContent=bar.toFixed(3);
+  }
+  const img=new Image();
+  img.onload=()=>{
+    cv.width=img.width; cv.height=img.height;
+    ctx.drawImage(img,0,0);
+    clean=ctx.getImageData(0,0,cv.width,cv.height);
+    noise=gauss(cv.width*cv.height*3);
+    draw(0);
+  };
+  img.onerror=()=>{ctx.fillStyle='#191828';ctx.fillRect(0,0,cv.width,cv.height);};
+  img.src='assets/scrubber_cell.jpg';
+
+  slider.addEventListener('input',()=>draw(slider.value/1000));
+  reset.addEventListener('click',()=>{stop();slider.value=0;draw(0);});
+  function stop(){clearInterval(timer);timer=null;play.textContent='Play';play.setAttribute('aria-pressed','false');}
+  play.addEventListener('click',()=>{
+    if(timer){stop();return;}
+    play.textContent='Pause'; play.setAttribute('aria-pressed','true'); phase=+slider.value/1000;
+    timer=setInterval(()=>{phase+=0.012; if(phase>1){phase=0; noise=gauss(cv.width*cv.height*3);}
+      slider.value=Math.round(phase*1000); draw(phase);},40);
+  });
+})();
+
+/* ---------- 2. live 2-D diffusion ---------- */
+(function(){
+  const cv=document.getElementById('toy'), ctx=cv.getContext('2d');
+  const play=document.getElementById('toy-play'), reset=document.getElementById('toy-reset');
+  const stepOut=document.getElementById('toy-step'), aOut=document.getElementById('toy-a');
+  const cap=document.getElementById('toy-caption');
+  let data=null, frame=0, timer=null;
+
+  const SCALE=95, cx=()=>cv.width/2, cy=()=>cv.height/2;
+  function render(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    if(!data) return;
+    ctx.strokeStyle='rgba(126,121,148,.55)'; ctx.lineWidth=1.5;
+    data.modes.forEach(([x,y])=>{ctx.beginPath();ctx.arc(cx()+x*SCALE,cy()-y*SCALE,7,0,6.284);ctx.stroke();});
+    const pts=data.frames[frame];
+    ctx.fillStyle='rgba(72,226,146,.72)';
+    pts.forEach(([x,y])=>{ctx.beginPath();ctx.arc(cx()+x*SCALE,cy()-y*SCALE,2.1,0,6.284);ctx.fill();});
+    const total=data.frames.length-1;
+    stepOut.textContent=frame+' / '+total;
+    aOut.textContent=COS(1-frame/total).toFixed(3);
+  }
+  function stop(){clearInterval(timer);timer=null;play.textContent='Play';play.setAttribute('aria-pressed','false');}
+  play.addEventListener('click',()=>{
+    if(!data) return;
+    if(timer){stop();return;}
+    play.textContent='Pause'; play.setAttribute('aria-pressed','true');
+    if(frame>=data.frames.length-1) frame=0;
+    timer=setInterval(()=>{frame++; if(frame>=data.frames.length-1){frame=data.frames.length-1;render();stop();return;} render();},55);
+  });
+  reset.addEventListener('click',()=>{stop();frame=0;render();});
+
+  fetch('data/toy2d.json').then(r=>r.ok?r.json():Promise.reject()).then(j=>{
+    data=j; frame=0; render();
+    cap.textContent=`${j.parameters.toLocaleString()} parameters, trained for 4,000 steps on a cosine schedule with ${j.timesteps} timesteps. DDIM sampling, ${j.inference_steps} inference steps.`;
+  }).catch(()=>{cap.textContent='Trajectory not built yet — run the toy2d stage of the asset pipeline.';});
+})();
+
+/* ---------- 3. schedule curve ---------- */
+(function(){
+  const svg=document.getElementById('schedule'); if(!svg) return;
+  const W=820,H=220,L=54,R=700,T=22,B=172;
+  const x=t=>L+t*(R-L), y=v=>B-v*(B-T);
+  let d='';
+  for(let i=0;i<=200;i++){const t=i/200; d+=(i?'L':'M')+x(t).toFixed(1)+' '+y(COS(t)).toFixed(1);}
+  svg.innerHTML=`
+    <line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#262435"></line>
+    <line x1="${L}" y1="${T}" x2="${L}" y2="${B}" stroke="#262435"></line>
+    <path d="${d}" fill="none" stroke="#48E292" stroke-width="2.2"></path>
+    <text class="axlab" x="${L}" y="${B+22}">t = 0</text>
+    <text class="axlab" x="${R}" y="${B+22}" text-anchor="end">t = T</text>
+    <text class="axlab" x="${L-10}" y="${T+6}" text-anchor="end">1.0</text>
+    <text class="axlab" x="${L-10}" y="${B+4}" text-anchor="end">0</text>
+    <text class="axlab" x="${L}" y="${T-8}" letter-spacing="1.4">ᾱt · COSINE SCHEDULE</text>
+    <circle cx="${R}" cy="${y(COS(1))}" r="5" fill="#48E292"></circle>
+    <line x1="${R}" y1="${y(COS(1))}" x2="${R+24}" y2="${y(COS(1))-34}" stroke="#48E292" stroke-opacity=".5"></line>
+    <text class="slab" x="${R+28}" y="${y(COS(1))-40}" fill="#48E292">Sampling wants this end at 0</text>
+    <text class="slab" x="${R+28}" y="${y(COS(1))-22}" fill="#F45C52">Inversion wants it away from 0</text>
+    <text class="axlab" x="${R+28}" y="${y(COS(1))-2}">floored at 10⁻²</text>`;
+})();
+
+/* ---------- 4. cell atlas ---------- */
+(function(){
+  const cv=document.getElementById('atlas'); if(!cv) return;
+  const ctx=cv.getContext('2d');
+  const card=document.getElementById('hovercard'), shot=document.getElementById('hovershot').getContext('2d');
+  const gEl=document.getElementById('hover-gene'), cEl=document.getElementById('hover-comp'), hEl=document.getElementById('hover-het');
+  const hint=document.getElementById('atlas-hint'), legend=document.getElementById('atlas-legend'), cap=document.getElementById('atlas-caption');
+  const COLOURS=['#48E292','#5884FF','#F6CE56','#F45C52','#B57BFF','#4FD9E8','#FF9E64','#E86AB8','#8E8AA6'];
+  let atlas=null, sheets=[], pts=null, colourOf={};
+
+  function layout(){
+    if(!atlas) return;
+    const xs=atlas.x, ys=atlas.y;
+    const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+    const pad=34, sx=(cv.width-2*pad)/(x1-x0||1), sy=(cv.height-2*pad)/(y1-y0||1), s=Math.min(sx,sy);
+    pts=xs.map((v,i)=>[pad+(v-x0)*s+(cv.width-2*pad-(x1-x0)*s)/2,
+                       cv.height-pad-((ys[i]-y0)*s+(cv.height-2*pad-(y1-y0)*s)/2)]);
+  }
+  function render(hi=-1){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    if(!pts) return;
+    for(let i=0;i<pts.length;i++){
+      ctx.globalAlpha=hi<0?0.72:(i===hi?1:0.28);
+      ctx.fillStyle=colourOf[atlas.label[i]]||'#8E8AA6';
+      ctx.beginPath(); ctx.arc(pts[i][0],pts[i][1],i===hi?5.5:2.3,0,6.284); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+  cv.addEventListener('mousemove',ev=>{
+    if(!pts) return;
+    const r=cv.getBoundingClientRect(), k=cv.width/r.width;
+    const mx=(ev.clientX-r.left)*k, my=(ev.clientY-r.top)*k;
+    let best=-1,bd=1e9;
+    for(let i=0;i<pts.length;i++){const dx=pts[i][0]-mx,dy=pts[i][1]-my,d=dx*dx+dy*dy; if(d<bd){bd=d;best=i;}}
+    if(bd>900){card.classList.remove('on'); render(); hint.style.opacity=1; return;}
+    hint.style.opacity=0;
+    render(best);
+    card.style.left=(pts[best][0]/cv.width*100)+'%';
+    card.style.top =(pts[best][1]/cv.height*100)+'%';
+    card.classList.add('on');
+    gEl.textContent=atlas.gene[best];
+    cEl.textContent=atlas.label[best];
+    hEl.textContent='heterogeneity '+atlas.het[best].toFixed(3);
+    const sp=atlas.sprite[best];
+    shot.clearRect(0,0,96,96);
+    if(sp && sheets[sp[0]] && sheets[sp[0]].complete){
+      shot.drawImage(sheets[sp[0]],sp[1]*96,sp[2]*96,96,96,0,0,96,96);
+    }else{
+      shot.fillStyle='#191828'; shot.fillRect(0,0,96,96);
+      shot.fillStyle='#7E7994'; shot.font='11px monospace'; shot.fillText('no image',20,50);
+    }
+  });
+  cv.addEventListener('mouseleave',()=>{card.classList.remove('on');hint.style.opacity=1;render();});
+
+  fetch('data/atlas.json').then(r=>r.ok?r.json():Promise.reject()).then(j=>{
+    atlas=j;
+    const seen=[...new Set(j.label)];
+    seen.forEach((n,i)=>colourOf[n]=COLOURS[i%COLOURS.length]);
+    legend.innerHTML=seen.map(n=>`<span style="display:inline-flex;align-items:center;gap:8px"><i class="dot" style="background:${colourOf[n]}"></i>${n}</span>`).join('');
+    cap.textContent=`${j.x.length.toLocaleString()} of 23,520 single cells, sampled for display across ${new Set(j.gene).size} genes in U-2 OS. Colour is the Human Protein Atlas compartment annotation for that gene; position comes only from the image.`;
+    (j.sheets||0)&&0;
+    const n=Math.max(0,...j.sprite.filter(Boolean).map(s=>s[0]))+1;
+    for(let i=0;i<n;i++){const im=new Image(); im.src='assets/sprite_'+i+'.jpg'; im.onload=()=>{}; sheets.push(im);}
+    layout(); render();
+  }).catch(()=>{
+    cap.textContent='Atlas not built yet — run the atlas and thumbs stages of the asset pipeline.';
+    ctx.fillStyle='#7E7994'; ctx.font='14px "IBM Plex Mono", monospace';
+    ctx.fillText('atlas data not built',30,40);
+  });
+})();
+</script>
+</body>
+</html>

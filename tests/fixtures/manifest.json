@@ -1,0 +1,18 @@
+{
+  "nucleoplasm": {
+    "gene": "DCAF11",
+    "source": "Nucleoplasm.png"
+  },
+  "mitochondria": {
+    "gene": "HSPA9",
+    "source": "Mitochondria.png"
+  },
+  "plasma_membrane": {
+    "gene": "CD2AP",
+    "source": "Plasma_membrane.png"
+  },
+  "golgi": {
+    "gene": "GOLGA5",
+    "source": "cell.png"
+  }
+}

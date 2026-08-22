@@ -4,13 +4,23 @@
 __pycache__/
 *.py[cod]
 
-# Internal planning
+# Internal planning and process. Anchored with a leading slash on purpose: an unanchored
+# `data/` would also match `docs/data/`, where the site keeps the atlas.
 INTERNAL.md
+/private/
 
-# Data, checkpoints, and generated artifacts
-data/
-outputs/
-checkpoints/
+# Source images, caches, checkpoints and run outputs
+/data/
+/outputs/
+/third_party/
+/plates/
+/checkpoints/
 *.ckpt
 *.pt
 *.pth
+*.tar.gz
+*.tgz
+/_to_delete/
+/gpu_ssh.sh
+/_legion.tgz
+/BOOTSTRAP.md
