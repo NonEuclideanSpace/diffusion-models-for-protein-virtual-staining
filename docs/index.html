@@ -796,7 +796,7 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
     const seen=[...new Set(j.label)];
     seen.forEach((n,i)=>colourOf[n]=COLOURS[i%COLOURS.length]);
     legend.innerHTML=seen.map(n=>`<span style="display:inline-flex;align-items:center;gap:8px"><i class="dot" style="background:${colourOf[n]}"></i>${n}</span>`).join('');
-    cap.textContent=`${j.x.length.toLocaleString()} of 23,520 single cells, sampled for display across ${new Set(j.gene).size} genes in U-2 OS. Colour is the Human Protein Atlas compartment annotation for that gene; position comes only from the image.`;
+    cap.textContent=`${j.x.length.toLocaleString()} of 23,520 single cells, sampled for display across ${new Set(j.gene).size} genes in U-2 OS, stratified so that rare compartments stay visible rather than in their true proportions. Colour is the Human Protein Atlas compartment annotation for that gene; position comes only from the image.`;
     (j.sheets||0)&&0;
     const n=Math.max(0,...j.sprite.filter(Boolean).map(s=>s[0]))+1;
     for(let i=0;i<n;i++){const im=new Image(); im.src='assets/sprite_'+i+'.jpg'; im.onload=()=>{}; sheets.push(im);}
