@@ -31,8 +31,10 @@ body{
   -webkit-font-smoothing:antialiased; overflow-x:hidden;
 }
 h1,h2,h3{margin:0; font-weight:400; text-wrap:balance}
-h1{font-family:"Instrument Serif",Georgia,serif; font-size:clamp(2.6rem,6.4vw,5.2rem); line-height:1.02; letter-spacing:-.02em}
-h2{font-family:"Instrument Serif",Georgia,serif; font-size:clamp(1.9rem,3.4vw,2.9rem); line-height:1.12; letter-spacing:-.015em}
+h1{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
+  font-size:clamp(2.4rem,5.6vw,4.6rem); line-height:1.14; letter-spacing:-.008em}
+h2{font-family:"Instrument Serif",Georgia,"Times New Roman",serif;
+  font-size:clamp(1.85rem,3.2vw,2.7rem); line-height:1.18; letter-spacing:-.008em}
 h3{font-size:1.06rem; font-weight:600; line-height:1.4; letter-spacing:-.005em}
 p{margin:0}
 p+p{margin-top:1.05em}
@@ -92,7 +94,7 @@ nav .repo:hover{background:#5FEBA9; color:var(--bg)}
 .hero-strip{position:relative; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line)}
 .hero-strip img{display:block; width:100%; height:auto}
 .hero-strip::after{content:""; position:absolute; inset:0;
-  background:linear-gradient(180deg,rgba(14,13,19,.15),rgba(14,13,19,.72))}
+  background:linear-gradient(180deg,rgba(14,13,19,0),rgba(14,13,19,.34))}
 
 /* ---------- scrubber ---------- */
 .scrub{display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:26px; align-items:center}
@@ -187,7 +189,7 @@ figcaption{font-size:.87rem; color:var(--muted); margin-top:14px; max-width:72ch
 /* ---------- atlas ---------- */
 .atlas-wrap{position:relative; margin-top:34px; border-radius:var(--radius); overflow:hidden;
   border:1px solid var(--line); background:radial-gradient(75% 75% at 50% 45%,#131221,#07070C)}
-#atlas{display:block; width:100%; height:auto; cursor:crosshair}
+#atlas-canvas{display:block; width:100%; height:auto; cursor:crosshair}
 .hovercard{position:absolute; pointer-events:none; opacity:0; transform:translate(-50%,-115%);
   transition:opacity .14s; padding:11px; width:184px; z-index:5}
 .hovercard.on{opacity:1}
@@ -419,7 +421,7 @@ footer{padding:80px 0 64px; border-top:1px solid var(--line-soft)}
     trajectory the trained model actually produces.</p>
 
     <div class="toy reveal">
-      <div class="toy-stage"><canvas id="toy" width="880" height="560"></canvas></div>
+      <div class="toy-stage"><canvas id="toy-canvas" width="880" height="560"></canvas></div>
       <div class="glass toy-panel">
         <span class="eyebrow">Reverse trajectory</span>
         <div class="readouts" style="gap:20px">
@@ -522,7 +524,7 @@ footer{padding:80px 0 64px; border-top:1px solid var(--line-soft)}
     compartments are.</p>
 
     <div class="atlas-wrap reveal">
-      <canvas id="atlas" width="1120" height="660"></canvas>
+      <canvas id="atlas-canvas" width="1120" height="660"></canvas>
       <div class="glass hovercard" id="hovercard">
         <canvas id="hovershot" width="96" height="96"></canvas>
         <div class="g" id="hover-gene">—</div>
@@ -679,7 +681,7 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
 
 /* ---------- 2. live 2-D diffusion ---------- */
 (function(){
-  const cv=document.getElementById('toy'), ctx=cv.getContext('2d');
+  const cv=document.getElementById('toy-canvas'), ctx=cv.getContext('2d');
   const play=document.getElementById('toy-play'), reset=document.getElementById('toy-reset');
   const stepOut=document.getElementById('toy-step'), aOut=document.getElementById('toy-a');
   const cap=document.getElementById('toy-caption');
@@ -739,12 +741,13 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
 
 /* ---------- 4. cell atlas ---------- */
 (function(){
-  const cv=document.getElementById('atlas'); if(!cv) return;
+  const cv=document.getElementById('atlas-canvas'); if(!cv) return;
   const ctx=cv.getContext('2d');
   const card=document.getElementById('hovercard'), shot=document.getElementById('hovershot').getContext('2d');
   const gEl=document.getElementById('hover-gene'), cEl=document.getElementById('hover-comp'), hEl=document.getElementById('hover-het');
   const hint=document.getElementById('atlas-hint'), legend=document.getElementById('atlas-legend'), cap=document.getElementById('atlas-caption');
-  const COLOURS=['#48E292','#5884FF','#F6CE56','#F45C52','#B57BFF','#4FD9E8','#FF9E64','#E86AB8','#8E8AA6'];
+  const COLOURS=['#48E292','#5884FF','#F6CE56','#F45C52','#B57BFF','#4FD9E8','#FF9E64','#E86AB8','#7FE7C4'];
+  const OTHER='#4E4A62';
   let atlas=null, sheets=[], pts=null, colourOf={};
 
   function layout(){
@@ -758,10 +761,17 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
   function render(hi=-1){
     ctx.clearRect(0,0,cv.width,cv.height);
     if(!pts) return;
-    for(let i=0;i<pts.length;i++){
-      ctx.globalAlpha=hi<0?0.72:(i===hi?1:0.28);
-      ctx.fillStyle=colourOf[atlas.label[i]]||'#8E8AA6';
-      ctx.beginPath(); ctx.arc(pts[i][0],pts[i][1],i===hi?5.5:2.3,0,6.284); ctx.fill();
+    // the unnamed bucket goes down first and stays quiet, so the compartments read on top of it
+    for(const pass of [0,1]){
+      for(let i=0;i<pts.length;i++){
+        const other=atlas.label[i]==='Other';
+        if((pass===0)!==other) continue;
+        const on=i===hi;
+        ctx.globalAlpha=hi<0?(other?0.32:0.86):(on?1:(other?0.12:0.30));
+        ctx.fillStyle=other?OTHER:(colourOf[atlas.label[i]]||OTHER);
+        ctx.beginPath(); ctx.arc(pts[i][0],pts[i][1],on?6.5:(other?2.0:3.2),0,6.284); ctx.fill();
+        if(on){ctx.globalAlpha=1;ctx.strokeStyle='#ECEAF3';ctx.lineWidth=1.6;ctx.stroke();}
+      }
     }
     ctx.globalAlpha=1;
   }
@@ -793,13 +803,23 @@ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
 
   fetch('data/atlas.json').then(r=>r.ok?r.json():Promise.reject()).then(j=>{
     atlas=j;
-    const seen=[...new Set(j.label)];
-    seen.forEach((n,i)=>colourOf[n]=COLOURS[i%COLOURS.length]);
-    legend.innerHTML=seen.map(n=>`<span style="display:inline-flex;align-items:center;gap:8px"><i class="dot" style="background:${colourOf[n]}"></i>${n}</span>`).join('');
-    cap.textContent=`${j.x.length.toLocaleString()} of 23,520 single cells, sampled for display across ${new Set(j.gene).size} genes in U-2 OS, stratified so that rare compartments stay visible rather than in their true proportions. Colour is the Human Protein Atlas compartment annotation for that gene; position comes only from the image.`;
-    (j.sheets||0)&&0;
+    const named=[...new Set(j.label)].filter(n=>n!=='Other').sort();
+    named.forEach((n,i)=>colourOf[n]=COLOURS[i%COLOURS.length]);
+    colourOf['Other']=OTHER;
+    legend.innerHTML=named.concat([...new Set(j.label)].includes('Other')?['Other']:[])
+      .map(n=>`<span style="display:inline-flex;align-items:center;gap:8px"><i class="dot" style="background:${colourOf[n]}"></i>${n}</span>`).join('');
+    cap.textContent=`${j.x.length.toLocaleString()} of 23,520 single cells, sampled for display across ${new Set(j.gene).size} genes in U-2 OS, stratified so that rare compartments stay visible rather than appearing in their true proportions. Colour is the Human Protein Atlas compartment annotation for that gene; position comes only from the image. Among the named compartments, 39.1% of a cell's fifteen nearest neighbours here share its compartment, against 11.1% expected by chance.`;
+    // eight megabytes of thumbnails should not be on the critical path for a visitor who never
+    // scrolls this far, so the sheets are fetched when the section comes into view
     const n=Math.max(0,...j.sprite.filter(Boolean).map(s=>s[0]))+1;
-    for(let i=0;i<n;i++){const im=new Image(); im.src='assets/sprite_'+i+'.jpg'; im.onload=()=>{}; sheets.push(im);}
+    const load=()=>{for(let i=0;i<n;i++){const im=new Image();
+      im.onload=()=>{}; im.src='assets/sprite_'+i+'.jpg'; sheets.push(im);}};
+    const section=document.getElementById('atlas');
+    if('IntersectionObserver' in window && section){
+      const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){load();io.disconnect();}},
+                                        {rootMargin:'300px'});
+      io.observe(section);
+    }else{load();}
     layout(); render();
   }).catch(()=>{
     cap.textContent='Atlas not built yet — run the atlas and thumbs stages of the asset pipeline.';

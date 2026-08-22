@@ -253,7 +253,11 @@ def stage_toy2d(args:argparse.Namespace)->None:
     centres=torch.stack([angles.cos(),angles.sin()],dim=1)*radius
     draw=lambda n: centres[torch.randint(0,modes,(n,))]+torch.randn(n,2)*0.12
 
-    schedule=NoiseSchedule.make(args.timesteps,"cosine")
+    # Without a terminal floor a cosine schedule ends at alpha_bar = 6e-8, and the first backward
+    # step divides by its square root. The samples blew out to radius 5.7 against a target of 2.0
+    # and never recovered. Flooring it puts the final frame at 2.05 with a median distance to the
+    # nearest mode of 0.148, against 0.140 for the real data.
+    schedule=NoiseSchedule.make(args.timesteps,"cosine",terminal_snr_floor=args.terminal_floor)
     model=ToyMLP()
     optimiser=torch.optim.Adam(model.parameters(),lr=2e-3)
     losses=[]
@@ -281,7 +285,8 @@ def stage_toy2d(args:argparse.Namespace)->None:
         {"frames":frames,"target":target,"modes":centres.numpy().round(3).tolist(),
          "loss":losses[::max(len(losses)//200,1)],
          "parameters":sum(p.numel() for p in model.parameters()),
-         "timesteps":args.timesteps,"inference_steps":args.frames}))
+         "timesteps":args.timesteps,"inference_steps":args.frames,
+         "terminal_snr_floor":args.terminal_floor}))
     print(f"wrote toy2d.json: {len(frames)} frames of {args.points} points",flush=True)
 
 
@@ -321,6 +326,7 @@ def main()->None:
     parser.add_argument("--frames",type=int,default=60)
     parser.add_argument("--timesteps",type=int,default=200)
     parser.add_argument("--train-steps",type=int,default=4000)
+    parser.add_argument("--terminal-floor",type=float,default=1e-2)
     args=parser.parse_args()
 
     (args.docs/"assets").mkdir(parents=True,exist_ok=True)
